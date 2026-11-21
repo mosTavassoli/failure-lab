@@ -2,8 +2,9 @@
 
 A successful reservation consumes one ticket from a sale and records an
 acceptance event. `PENDING` means the reservation was committed, not that
-a ticket was issued. In the current slice there is no publisher or worker,
-so `PENDING` does not yet indicate an incident.
+a ticket was issued. It is expected briefly while the outbox is published
+and the worker processes Kafka events. `ISSUED` is committed with the ticket.
+If fulfillment stalls, see the [worker redelivery drill](worker-redelivery.md).
 
 | Signal | Meaning | Next check |
 | --- | --- | --- |

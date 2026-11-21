@@ -11,7 +11,7 @@ that every future incident be about ticketing.
 | Milestone | Evidence of completion |
 | --- | --- |
 | **1. Reservation API** | Real PostgreSQL tests show last-ticket contention, idempotent retry, and rollback if the acceptance event cannot be saved. |
-| **2. Fulfillment and redelivery** | Publish the outbox to Kafka, deliver to a worker, and stop it after committing a ticket but before acknowledging. Verify redelivery and address it without duplicate tickets. Compare actual ticket IDs against accepted reservations. |
+| **2. Fulfillment and redelivery** | The [redelivery drill](../knowledge/worker-redelivery.md) launches packaged apps against real Kafka and PostgreSQL. It stops the worker after commit and before acknowledgement, then checks redelivery, the original ticket ID, and reconciliation for both accepted orders. |
 | **3. Kubernetes/KEDA incident** | Run the same workload on kind. Capture a CPU scheduling failure and replay those observations with [Kafka On-Call](https://github.com/mosTavassoli/kafka-oncall). |
 | **4. Web and Knowledge** | Ship the React/TypeScript customer, incident, and Knowledge views. Both incidents must use the same evidence timeline and verification report. Record a public replay with no model or live cluster dependency. |
 | **5. Operate and extend** | Add OpenTelemetry and Prometheus where the incidents need them, test Redis as a non-authoritative status cache, and plug in the read-only HolmesGPT skill and versioned runbooks. Add a PostgreSQL lock incident without replacing the report format. |
@@ -37,12 +37,25 @@ reservation command uses a single transaction:
    (`eventId`, `reservationId`, `saleId`, `type`, `occurredAt`). Roll back the
    claim and inventory update on failure.
 
-When it is implemented, the relay must keep the same `eventId` across
-publishing retries. Marking an outbox row published and delivering to Kafka
-are not one transaction, so consumers must tolerate duplicate delivery.
-Neither the outbox nor a successful HTTP response guarantees exactly-once
-Kafka delivery. The future worker's database transition will own the
-one-ticket-per-reservation guarantee.
+## Delivery and fulfillment
+
+The scheduled relay claims an unpublished outbox row with
+`FOR UPDATE SKIP LOCKED`, publishes with the reservation ID as the Kafka key,
+and marks the row published only after broker acknowledgement. It holds a
+row lock across the bounded broker request; this is a local-first trade-off
+for a simple relay, not a high-throughput design. If the process stops
+after broker acknowledgement but before its SQL commit, it can send the
+same payload and `eventId` again. Kafka producer idempotence does not make
+these two writes atomic.
+
+The worker validates that the event identifies a durable acceptance, inserts
+a ticket and marks the reservation issued in the same PostgreSQL transaction,
+then acknowledges the Kafka delivery. A unique constraint on `ticket.reservation_id`
+makes redelivery a no-op. This gives one durable ticket per reservation
+without assuming exactly-once Kafka delivery. The lab uses one database shared
+by the API and worker, and it retains outbox rows so the worker can validate
+source events. Malformed events fail the consumer rather than being silently
+committed; a dead-letter workflow and retention policy are out of scope.
 
 ## Knowledge boundaries
 

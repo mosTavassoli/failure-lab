@@ -1,30 +1,46 @@
 # Failure Lab
 
-**Break a running system, investigate what happened, and prove whether it recovered.**
+[![Verify](https://github.com/mosTavassoli/failure-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/mosTavassoli/failure-lab/actions/workflows/ci.yml)
+
+**Reproduce failures. Prove recovery.**
 The first system under test is a ticket reservation and fulfillment app.
 New incidents will share an evidence timeline, runbook links, and recovery
 reports—not a separate app for each lesson.
 
 ## Status
 
-The reservation API is the first working slice: Java 21, Quarkus, and
-PostgreSQL. It accepts one ticket per request, prevents overselling, and
-commits the reservation and its outbox event together. A unit of capacity
-is consumed only once for a successful idempotency key.
+The reservation API prevents overselling and commits each accepted
+reservation and its outbox event together. A relay publishes pending events
+to Kafka; a separate worker issues one ticket per accepted reservation and
+acknowledges only after the PostgreSQL transaction commits.
 
-Events are stored, **not yet published**. The API returns `PENDING`; there
-is no fulfillment worker, Kubernetes lab, web UI, or agent in this slice.
-See the [design and roadmap](docs/design.md) and the [first Knowledge
-page](knowledge/reservations.md).
+The [first drill](knowledge/worker-redelivery.md) stops a real worker
+process between the database commit and Kafka acknowledgement, then
+verifies redelivery and compares accepted reservation IDs with issued
+tickets. See the [design and roadmap](docs/design.md) for what comes next.
+The Kubernetes lab, web UI, and agent are not implemented yet.
 
 ## Run locally
 
-Requirements: **Java 21, Maven, Docker with Linux containers**. Quarkus Dev
-Services starts a disposable PostgreSQL container. Run from the repo root:
+Requirements: **Java 21, Maven, Docker with Linux containers**.
+Run the test suite from the repo root:
 
 ```sh
 mvn verify
+```
+
+The tests create disposable PostgreSQL and Kafka containers and do not
+need the Docker Compose stack or an API key. To try the app manually:
+
+```sh
+docker compose up -d --wait
 mvn -f reservation-api/pom.xml quarkus:dev
+```
+
+In a second terminal, start the worker **after** the API applies migrations:
+
+```sh
+mvn -f fulfillment-worker/pom.xml quarkus:dev
 ```
 
 Use these requests from a REST client. The development profile seeds a sale
@@ -44,8 +60,12 @@ Idempotency-Key: f0000000-0000-4000-8000-000000000002
 
 The first successful request returns `201` and a `Location` for the
 reservation. Sending the same sale and key again returns `200` with the
-same reservation. Use a new key only for a new reservation intent. Sales
-with no available tickets return `409 SOLD_OUT`.
+same reservation ID and current status. Use a new key only for a new
+reservation intent. Sales with no available tickets return `409 SOLD_OUT`.
+The reservation stays `PENDING` until the worker commits the ticket, then
+`GET /api/reservations/{id}` reports `ISSUED`.
+
+Stop both Java processes and run `docker compose down` when finished.
 
 This is a local lab for synthetic data, not a public checkout. There are
 no real payments, user accounts, or production integrations.

@@ -9,11 +9,14 @@
     <packaging>pom</packaging>
     <modules>
         <module>reservation-api</module>
+        <module>fulfillment-worker</module>
+        <module>recovery-it</module>
     </modules>
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <quarkus.platform.version>3.40.1.2</quarkus.platform.version>
+        <testcontainers.version>2.0.5</testcontainers.version>
     </properties>
     <dependencyManagement>
         <dependencies>
