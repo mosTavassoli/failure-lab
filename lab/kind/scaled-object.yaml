@@ -1,0 +1,23 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: fulfillment
+  namespace: failure-lab
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: fulfillment-worker
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  pollingInterval: 5
+  triggers:
+    - type: kafka
+      metricType: AverageValue
+      metadata:
+        bootstrapServers: kafka.failure-lab.svc.cluster.local:9092
+        topic: reservation.accepted.v1
+        consumerGroup: failure-lab-fulfillment
+        version: "3.8.0"
+        lagThreshold: "2"
+        offsetResetPolicy: earliest
+        allowIdleConsumers: "false"

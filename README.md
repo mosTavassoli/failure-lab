@@ -17,20 +17,28 @@ acknowledges only after the PostgreSQL transaction commits.
 The [first drill](knowledge/worker-redelivery.md) stops a real worker
 process between the database commit and Kafka acknowledgement, then
 verifies redelivery and compares accepted reservation IDs with issued
-tickets. See the [design and roadmap](docs/design.md) for what comes next.
-The Kubernetes lab, web UI, and agent are not implemented yet.
+tickets. The [Kubernetes/KEDA drill](lab/kind/README.md) is a separate
+scenario for CPU scheduling. In the [recorded local run](lab/kind/README.md#verified-local-run),
+the HPA requested four workers but only one was ready. After restoring CPU
+headroom, lag drained and all 65 accepted reservations reconciled by ticket
+ID. Kafka On-Call replayed the captured evidence offline. See the
+[design and roadmap](docs/design.md) for what comes next. The web UI and
+agent are not implemented yet.
 
 ## Run locally
 
 Requirements: **Java 21, Maven, Docker with Linux containers**.
-Run the test suite from the repo root:
+Run the backend integration suite from the repo root:
 
 ```sh
 mvn verify
 ```
 
 The tests create disposable PostgreSQL and Kafka containers and do not
-need the Docker Compose stack or an API key. To try the app manually:
+need the Docker Compose stack or an API key. The drill's evidence tests
+run without Docker: `python -B -m unittest discover -s lab/kind -v`.
+
+To try the app manually:
 
 ```sh
 docker compose up -d --wait

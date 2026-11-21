@@ -4,3 +4,5 @@ target/
 *.iml
 .env
 .env.*
+__pycache__/
+/lab-runs/

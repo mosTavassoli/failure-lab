@@ -12,7 +12,7 @@ that every future incident be about ticketing.
 | --- | --- |
 | **1. Reservation API** | Real PostgreSQL tests show last-ticket contention, idempotent retry, and rollback if the acceptance event cannot be saved. |
 | **2. Fulfillment and redelivery** | The [redelivery drill](../knowledge/worker-redelivery.md) launches packaged apps against real Kafka and PostgreSQL. It stops the worker after commit and before acknowledgement, then checks redelivery, the original ticket ID, and reconciliation for both accepted orders. |
-| **3. Kubernetes/KEDA incident** | Run the same workload on kind. Capture a CPU scheduling failure and replay those observations with [Kafka On-Call](https://github.com/mosTavassoli/kafka-oncall). |
+| **3. Kubernetes/KEDA incident** | The [kind drill](../lab/kind/README.md) checks a healthy baseline, captures a CPU scheduling block against the same workload, tests recovery by ticket ID, and emits a snapshot for [Kafka On-Call](https://github.com/mosTavassoli/kafka-oncall). |
 | **4. Web and Knowledge** | Ship the React/TypeScript customer, incident, and Knowledge views. Both incidents must use the same evidence timeline and verification report. Record a public replay with no model or live cluster dependency. |
 | **5. Operate and extend** | Add OpenTelemetry and Prometheus where the incidents need them, test Redis as a non-authoritative status cache, and plug in the read-only HolmesGPT skill and versioned runbooks. Add a PostgreSQL lock incident without replacing the report format. |
 

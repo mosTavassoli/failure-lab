@@ -1,0 +1,92 @@
+{
+  "format": "kafka-oncall/snapshot-v1",
+  "id": "kind-cpu-scheduling",
+  "target": "failure-lab/fulfillment-worker",
+  "as_of": "2026-11-21T19:59:05.087Z",
+  "observations": {
+    "scaled_object": {
+      "observed_at": "2026-11-21T19:59:01.577Z",
+      "target": "failure-lab/fulfillment-worker",
+      "name": "fulfillment",
+      "hpa": "keda-hpa-fulfillment",
+      "metric": "s0-kafka-reservation-accepted-v1",
+      "kafka_cluster": "failure-lab-kafka",
+      "topic": "reservation.accepted.v1",
+      "consumer_group": "failure-lab-fulfillment",
+      "lag_threshold": 2,
+      "scaler_profile": "keda-2.20.0-kafka",
+      "plain_lag_mode": true,
+      "allow_idle_consumers": false
+    },
+    "hpa": {
+      "observed_at": "2026-11-21T19:59:01.699Z",
+      "target": "failure-lab/fulfillment-worker",
+      "name": "keda-hpa-fulfillment",
+      "metric": "s0-kafka-reservation-accepted-v1",
+      "target_average_value": 2,
+      "min_replicas": 1,
+      "max_replicas": 4,
+      "desired_replicas": 4,
+      "scaling_limited": false
+    },
+    "deployment": {
+      "observed_at": "2026-11-21T19:59:01.812Z",
+      "target": "failure-lab/fulfillment-worker",
+      "desired_replicas": 4,
+      "ready_replicas": 1
+    },
+    "pods": {
+      "observed_at": "2026-11-21T19:59:01.943Z",
+      "target": "failure-lab/fulfillment-worker",
+      "items": [
+        {
+          "name": "fulfillment-worker-6666965854-b5dkl",
+          "phase": "Pending",
+          "ready": false,
+          "scheduled": false,
+          "reason": "Unschedulable",
+          "message": "0/1 nodes are available: 1 Insufficient cpu."
+        },
+        {
+          "name": "fulfillment-worker-6666965854-f79nk",
+          "phase": "Pending",
+          "ready": false,
+          "scheduled": false,
+          "reason": "Unschedulable",
+          "message": "0/1 nodes are available: 1 Insufficient cpu."
+        },
+        {
+          "name": "fulfillment-worker-6666965854-k82g8",
+          "phase": "Running",
+          "ready": true,
+          "scheduled": true,
+          "reason": null,
+          "message": null
+        },
+        {
+          "name": "fulfillment-worker-6666965854-kwntx",
+          "phase": "Pending",
+          "ready": false,
+          "scheduled": false,
+          "reason": "Unschedulable",
+          "message": "0/1 nodes are available: 1 Insufficient cpu."
+        }
+      ]
+    },
+    "kafka": {
+      "observed_at": "2026-11-21T19:59:04.913Z",
+      "kafka_cluster": "failure-lab-kafka",
+      "topic": "reservation.accepted.v1",
+      "consumer_group": "failure-lab-fulfillment",
+      "partitions": 4,
+      "lag": 60
+    },
+    "external_metric": {
+      "observed_at": "2026-11-21T19:59:05.087Z",
+      "namespace": "failure-lab",
+      "scaled_object": "fulfillment",
+      "metric": "s0-kafka-reservation-accepted-v1",
+      "value": 8
+    }
+  }
+}

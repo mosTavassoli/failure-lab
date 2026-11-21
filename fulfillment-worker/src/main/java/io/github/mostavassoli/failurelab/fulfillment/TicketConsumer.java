@@ -4,6 +4,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,16 +24,22 @@ class TicketConsumer {
     private final ObjectMapper json;
     private final TicketStore store;
     private final Optional<UUID> holdAckFor;
+    private final int processingDelayMs;
 
     TicketConsumer(ObjectMapper json, TicketStore store,
                    @ConfigProperty(name = "failure-lab.lab-mode", defaultValue = "false") boolean labMode,
-                   @ConfigProperty(name = "failure-lab.hold-ack-for") Optional<UUID> holdAckFor) {
-        if (!labMode && holdAckFor.isPresent()) {
-            throw new IllegalStateException("The acknowledgement hold requires explicit lab mode");
+                   @ConfigProperty(name = "failure-lab.hold-ack-for") Optional<UUID> holdAckFor,
+                   @ConfigProperty(name = "failure-lab.processing-delay-ms", defaultValue = "0") int processingDelayMs) {
+        if (!labMode && (holdAckFor.isPresent() || processingDelayMs != 0)) {
+            throw new IllegalStateException("Worker fault controls require explicit lab mode");
+        }
+        if (processingDelayMs < 0 || processingDelayMs > 5000) {
+            throw new IllegalArgumentException("Lab processing delay must be between 0 and 5000 ms");
         }
         this.json = json;
         this.store = store;
         this.holdAckFor = holdAckFor;
+        this.processingDelayMs = processingDelayMs;
     }
 
     @Incoming("reservations")
@@ -41,6 +48,9 @@ class TicketConsumer {
     CompletionStage<Void> consume(KafkaRecord<String, String> message) {
         try {
             var event = parse(message);
+            // Model bounded downstream latency so a small, synthetic burst can build real lag.
+            // Do not hold a database transaction or burn CPU during the delay.
+            TimeUnit.MILLISECONDS.sleep(processingDelayMs);
             // The database transaction is committed when this call returns.
             boolean created = store.issue(event);
             LOG.infof("Ticket %s for reservation %s (event %s)",
@@ -51,6 +61,9 @@ class TicketConsumer {
                 return new CompletableFuture<>();
             }
             return message.ack();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return message.nack(e);
         } catch (RuntimeException e) {
             return message.nack(e);
         }
