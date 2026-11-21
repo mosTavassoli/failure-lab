@@ -57,6 +57,41 @@ by the API and worker, and it retains outbox rows so the worker can validate
 source events. Malformed events fail the consumer rather than being silently
 committed; a dead-letter workflow and retention policy are out of scope.
 
+## Incident evidence and recovery
+
+The [system overview](../README.md#system-architecture) shows how a ticket
+is issued. The [kind drill](../lab/kind/README.md) runs that same workload
+and captures two different kinds of evidence:
+
+```mermaid
+flowchart LR
+    subgraph cluster["Disposable kind cluster"]
+        direction TB
+        lag["Kafka consumer-group lag"] --> keda["KEDA Kafka scaler"]
+        keda -->|"External metric"| hpa["Horizontal Pod Autoscaler"]
+        hpa -->|"Desired replicas"| deployment["Worker Deployment"]
+        deployment -->|"New pods via ReplicaSet"| scheduler["Kubernetes scheduler"]
+        scheduler -->|"Places pods or reports Insufficient cpu"| pods["Worker pods"]
+    end
+
+    cluster -.->|"Read Kafka and Kubernetes observations"| snapshot["Recorded snapshot"]
+    snapshot --> diagnosis["Kafka On-Call<br/>Offline diagnosis"]
+
+    accepted["Reservation IDs from HTTP 201 responses"] --> verify["Deterministic reconciliation"]
+    ledger[("PostgreSQL ticket ledger")] --> verify
+    verify --> result["Recovery result<br/>One ticket per accepted reservation; no extras"]
+```
+
+**Diagnosis** explains why the requested replicas could not run. KEDA
+exposes a metric derived from Kafka lag; it does not place pods. An idle
+lab pod's CPU request leaves too little schedulable capacity for new workers.
+The snapshot can be replayed offline without a model or a cluster.
+
+**Verification** checks whether the business recovered. After removing
+the idle pod and observing lag drain, the drill compares accepted IDs
+with the PostgreSQL ledger. Neither a healthy replica count nor an offline
+diagnosis is proof that the tickets were issued.
+
 ## Knowledge boundaries
 
 Markdown under [`knowledge/`](../knowledge/) is the first source for the

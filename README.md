@@ -7,6 +7,24 @@ The first system under test is a ticket reservation and fulfillment app.
 New incidents will share an evidence timeline, runbook links, and recovery
 reports—not a separate app for each lesson.
 
+## System architecture
+
+```mermaid
+flowchart LR
+    client["HTTP client"] -->|"Reserve or check status"| api["Reservation API<br/>Quarkus + scheduled outbox relay"]
+    api -->|"Commit stock, reservation, and outbox"| db[("PostgreSQL")]
+    api -->|"Publish pending outbox events"| kafka["Apache Kafka<br/>reservation.accepted.v1"]
+    kafka -->|"At-least-once delivery"| worker["Fulfillment worker<br/>Quarkus"]
+    worker -->|"Commit ticket and ISSUED status"| db
+```
+
+The two Java 21 services share PostgreSQL. The API commits the reservation
+and its event together; the worker acknowledges Kafka **after** committing
+the ticket. A database constraint prevents a redelivered event from issuing
+a second ticket. Docker Compose runs the dependencies for local development;
+the incident drill deploys the same workload to kind. See [how Failure Lab
+diagnoses the fault and verifies recovery](docs/design.md#incident-evidence-and-recovery).
+
 ## Status
 
 The reservation API prevents overselling and commits each accepted
