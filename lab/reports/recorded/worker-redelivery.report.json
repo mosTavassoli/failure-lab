@@ -1,0 +1,187 @@
+{
+  "diagnosis": {
+    "evidence_stages": [
+      "ack_held",
+      "worker_crashed",
+      "redelivered"
+    ],
+    "summary": "The worker committed the ticket before it could acknowledge the event."
+  },
+  "format": "failure-lab/incident-report-v1",
+  "runbook": "knowledge/worker-redelivery.md",
+  "scenario": "worker-redelivery",
+  "target": "fulfillment-worker",
+  "timeline": [
+    {
+      "facts": {
+        "reservation_id": "reservation-001"
+      },
+      "observed_at": "2026-11-22T08:51:33.440Z",
+      "sources": [
+        "Reservation API (HTTP 201)"
+      ],
+      "stage": "first_accepted",
+      "summary": "The API accepted the first reservation."
+    },
+    {
+      "facts": {
+        "event_id": "event-002",
+        "event_offset": 0,
+        "partition": 0,
+        "reservation_id": "reservation-001"
+      },
+      "observed_at": "2026-11-22T08:51:34.774Z",
+      "sources": [
+        "Kafka record",
+        "PostgreSQL outbox"
+      ],
+      "stage": "event_published",
+      "summary": "The relay published the first acceptance event."
+    },
+    {
+      "facts": {
+        "committed_next_offset": null,
+        "event_offset": 0,
+        "reservation_id": "reservation-001",
+        "status": "ISSUED",
+        "ticket_id": "ticket-002"
+      },
+      "observed_at": "2026-11-22T08:51:40.125Z",
+      "sources": [
+        "Fulfillment worker log",
+        "PostgreSQL",
+        "Reservation API status",
+        "Kafka consumer group"
+      ],
+      "stage": "ack_held",
+      "summary": "The ticket was durable and visible as ISSUED, but acknowledgement was held."
+    },
+    {
+      "facts": {
+        "committed_next_offset": null,
+        "event_offset": 0
+      },
+      "observed_at": "2026-11-22T08:51:40.148Z",
+      "sources": [
+        "Lab process harness",
+        "Kafka consumer group"
+      ],
+      "stage": "worker_crashed",
+      "summary": "The drill killed the worker; the offset still had not advanced."
+    },
+    {
+      "facts": {
+        "reservation_id": "reservation-002",
+        "status": "PENDING"
+      },
+      "observed_at": "2026-11-22T08:51:40.170Z",
+      "sources": [
+        "Reservation API (HTTP 201)",
+        "Reservation API status"
+      ],
+      "stage": "second_pending",
+      "summary": "The API accepted a second reservation; it was PENDING without a worker."
+    },
+    {
+      "facts": {
+        "event_id": "event-002",
+        "reservation_id": "reservation-001",
+        "ticket_id": "ticket-002"
+      },
+      "observed_at": "2026-11-22T08:51:46.059Z",
+      "sources": [
+        "Fulfillment worker log",
+        "PostgreSQL"
+      ],
+      "stage": "redelivered",
+      "summary": "The restarted worker saw the same event and kept the original ticket."
+    },
+    {
+      "facts": {
+        "next_offset": 2
+      },
+      "observed_at": "2026-11-22T08:51:46.767Z",
+      "sources": [
+        "Kafka consumer group"
+      ],
+      "stage": "offsets_committed",
+      "summary": "Kafka recorded consumer progress past both events."
+    },
+    {
+      "facts": {
+        "reservation_id": "reservation-002",
+        "status": "ISSUED"
+      },
+      "observed_at": "2026-11-22T08:51:46.772Z",
+      "sources": [
+        "Fulfillment worker log",
+        "Reservation API status"
+      ],
+      "stage": "second_issued",
+      "summary": "The API confirmed that the restarted worker issued the second reservation."
+    },
+    {
+      "facts": {
+        "accepted": 2,
+        "passed": true,
+        "tickets": 2
+      },
+      "observed_at": "2026-11-22T08:51:46.800Z",
+      "sources": [
+        "Reservation API",
+        "PostgreSQL"
+      ],
+      "stage": "tickets_reconciled",
+      "summary": "Checked accepted reservation IDs against the PostgreSQL ledger."
+    }
+  ],
+  "title": "Worker crash after commit, before acknowledgement",
+  "verification": {
+    "accepted_ids": [
+      "reservation-001",
+      "reservation-002"
+    ],
+    "ledger": {
+      "tickets": [
+        {
+          "id": "ticket-001",
+          "reservation_id": "reservation-002",
+          "source_event_id": "event-001"
+        },
+        {
+          "id": "ticket-002",
+          "reservation_id": "reservation-001",
+          "source_event_id": "event-002"
+        }
+      ],
+      "reservations": [
+        {
+          "id": "reservation-002",
+          "status": "ISSUED",
+          "event_id": "event-001"
+        },
+        {
+          "id": "reservation-001",
+          "status": "ISSUED",
+          "event_id": "event-002"
+        }
+      ]
+    },
+    "result": {
+      "passed": true,
+      "accepted": 2,
+      "reservations": 2,
+      "tickets": 2,
+      "duplicate_accepted_ids": [],
+      "missing_reservations": [],
+      "unexpected_reservations": [],
+      "duplicate_reservations": [],
+      "not_issued": [],
+      "missing_tickets": [],
+      "duplicate_tickets": [],
+      "duplicate_ticket_ids": [],
+      "unexpected_tickets": [],
+      "unmatched_source_events": []
+    }
+  }
+}

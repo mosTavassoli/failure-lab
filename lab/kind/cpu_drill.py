@@ -23,6 +23,7 @@ from evidence import (
     confirms_cpu_block, kafka_lag, milli_units, observed_pods, scaling_observations,
     scheduler_message_for_replay, verify_tickets, whole_units,
 )
+from incident_report import cpu_incident_report
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -199,17 +200,7 @@ class Lab:
                 "value": whole_units(item["value"])}
 
     def ledger(self):
-        return json.loads(self.sql(f"""
-            SELECT jsonb_build_object(
-              'reservations', COALESCE((SELECT jsonb_agg(to_jsonb(acceptance) ORDER BY id) FROM (
-                  SELECT r.id, r.status, o.event_id
-                  FROM reservation r LEFT JOIN outbox o
-                    ON o.reservation_id = r.id AND o.event_type = '{TOPIC}'
-              ) acceptance), '[]'),
-              'tickets', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY reservation_id, id)
-                                    FROM (SELECT id, reservation_id, source_event_id FROM ticket) t), '[]')
-            )
-            """))
+        return json.loads(self.sql((HERE.parent / "ticket-ledger.sql").read_text(encoding="utf-8")))
 
 
 def api(port, method, path, body=None):
@@ -304,11 +295,13 @@ def run_drill(lab, out):
         ledger = lab.ledger()
         result = verify_tickets(accepted, ledger)
         record("tickets_reconciled", passed=result["passed"], accepted=result["accepted"], tickets=result["tickets"])
-        write_json(out / "run.json", {
+        run = {
             "format": "failure-lab/kind-cpu-run-v1", "scenario": snapshot["id"], "target": TARGET,
             "components": {"kubernetes": "1.34.3", "keda": "2.20.0", "kafka": "4.1.1", "postgresql": "17"},
             "timeline": timeline, "accepted_ids": sorted(accepted), "ledger": ledger, "verification": result,
-        })
+        }
+        write_json(out / "run.json", run)
+        write_json(out / "incident-report.json", cpu_incident_report(run, snapshot))
         if not result["passed"]:
             raise RuntimeError(f"Kafka drained but ticket verification failed: {result}")
 

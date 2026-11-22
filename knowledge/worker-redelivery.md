@@ -19,8 +19,13 @@ the packaged API and worker as separate JVM processes.
    again, preserves the original ticket ID, issues the second ticket, and
    commits past both offsets.
 5. Reconcile the accepted reservation IDs against the issued tickets in
-   PostgreSQL. Missing or duplicate tickets fail the test even if Kafka
-   has drained.
+    PostgreSQL. Missing or duplicate tickets fail the test even if Kafka
+    has drained.
+
+The test writes `recovery-it/target/incident-report.json`. The
+[recorded report](../lab/reports/recorded/worker-redelivery.report.json) shows
+the held offset, the preserved ticket ID, and the final ledger using synthetic
+aliases. It can be read and [checked offline](../lab/reports/README.md#verify-offline).
 
 The hold requires explicit lab mode and an exact reservation UUID. There is
 no HTTP endpoint to crash a worker, and the test kills only a process it

@@ -197,12 +197,14 @@ def verify_tickets(accepted, ledger):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Recompute ticket verification from a saved kind drill.")
+    parser = argparse.ArgumentParser(description="Recompute ticket verification from a saved lab report or kind run.")
     parser.add_argument("run", type=Path)
     args = parser.parse_args()
     run = json.loads(args.run.read_text(encoding="utf-8"))
-    if run.get("format") != "failure-lab/kind-cpu-run-v1":
-        parser.error("expected failure-lab/kind-cpu-run-v1")
+    if run.get("format") == "failure-lab/incident-report-v1":
+        run = run["verification"]
+    elif run.get("format") != "failure-lab/kind-cpu-run-v1":
+        parser.error("expected failure-lab/incident-report-v1 or failure-lab/kind-cpu-run-v1")
     result = verify_tickets(run["accepted_ids"], run["ledger"])
     print(json.dumps(result, indent=2))
     return 0 if result["passed"] else 1

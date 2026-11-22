@@ -1,0 +1,881 @@
+{
+  "format": "failure-lab/incident-report-v1",
+  "scenario": "kind-cpu-scheduling",
+  "title": "KEDA scale-out blocked by CPU requests",
+  "target": "failure-lab/fulfillment-worker",
+  "runbook": "knowledge/keda-cpu-scheduling.md",
+  "timeline": [
+    {
+      "stage": "baseline",
+      "observed_at": "2026-11-21T19:58:50.067Z",
+      "sources": [
+        "Reservation API",
+        "Kubernetes HPA and Deployment",
+        "Kafka consumer group",
+        "PostgreSQL"
+      ],
+      "summary": "The baseline reservation issued with one worker ready.",
+      "facts": {
+        "hpa_desired": 1,
+        "ready": 1,
+        "lag": 0,
+        "accepted": 1,
+        "tickets": 1
+      }
+    },
+    {
+      "stage": "cpu_reserved",
+      "observed_at": "2026-11-21T19:58:53.914Z",
+      "sources": [
+        "Kubernetes node and pod requests"
+      ],
+      "summary": "An idle pod reserved schedulable CPU.",
+      "facts": {
+        "allocatable_mcpu": 8000,
+        "previously_requested_mcpu": 1950,
+        "reserved_mcpu": 5925,
+        "worker_request_mcpu": 250,
+        "remaining_mcpu": 125
+      }
+    },
+    {
+      "stage": "burst_accepted",
+      "observed_at": "2026-11-21T19:58:54.658Z",
+      "sources": [
+        "Reservation API (HTTP 201)"
+      ],
+      "summary": "The API accepted the burst of new reservations.",
+      "facts": {
+        "count": 64
+      }
+    },
+    {
+      "stage": "cpu_blocked",
+      "observed_at": "2026-11-21T19:59:05.089Z",
+      "sources": [
+        "Kubernetes HPA and Deployment",
+        "PodScheduled conditions",
+        "Kafka consumer group",
+        "KEDA external metrics"
+      ],
+      "summary": "The HPA requested more workers, but the scheduler reported insufficient CPU.",
+      "facts": {
+        "hpa_desired": 4,
+        "ready": 1,
+        "lag": 60,
+        "external_metric": 8,
+        "pod_observed_at": "2026-11-21T19:59:01.943Z",
+        "blocked_pods": [
+          {
+            "name": "fulfillment-worker-6666965854-b5dkl",
+            "reason": "Unschedulable",
+            "message": "0/1 nodes are available: 1 Insufficient cpu."
+          },
+          {
+            "name": "fulfillment-worker-6666965854-f79nk",
+            "reason": "Unschedulable",
+            "message": "0/1 nodes are available: 1 Insufficient cpu."
+          },
+          {
+            "name": "fulfillment-worker-6666965854-kwntx",
+            "reason": "Unschedulable",
+            "message": "0/1 nodes are available: 1 Insufficient cpu."
+          }
+        ]
+      }
+    },
+    {
+      "stage": "cpu_released",
+      "observed_at": "2026-11-21T19:59:05.301Z",
+      "sources": [
+        "Kubernetes API"
+      ],
+      "summary": "The drill removed the idle CPU reservation pod.",
+      "facts": {}
+    },
+    {
+      "stage": "workers_ready",
+      "observed_at": "2026-11-21T19:59:08.075Z",
+      "sources": [
+        "Kubernetes Deployment"
+      ],
+      "summary": "The requested workers became ready.",
+      "facts": {
+        "ready": 4
+      }
+    },
+    {
+      "stage": "lag_drained",
+      "observed_at": "2026-11-21T19:59:53.476Z",
+      "sources": [
+        "Kafka consumer group"
+      ],
+      "summary": "The worker consumer group reached zero lag.",
+      "facts": {
+        "lag": 0
+      }
+    },
+    {
+      "stage": "tickets_reconciled",
+      "observed_at": "2026-11-21T19:59:53.734Z",
+      "sources": [
+        "Reservation API",
+        "PostgreSQL"
+      ],
+      "summary": "Checked accepted reservation IDs against the PostgreSQL ledger.",
+      "facts": {
+        "accepted": 65,
+        "tickets": 65,
+        "passed": true
+      }
+    }
+  ],
+  "diagnosis": {
+    "summary": "Autoscaling requested more workers. Existing CPU requests left too little room to schedule them.",
+    "evidence_stages": [
+      "cpu_reserved",
+      "cpu_blocked"
+    ]
+  },
+  "verification": {
+    "accepted_ids": [
+      "reservation-001",
+      "reservation-002",
+      "reservation-003",
+      "reservation-004",
+      "reservation-005",
+      "reservation-006",
+      "reservation-007",
+      "reservation-008",
+      "reservation-009",
+      "reservation-010",
+      "reservation-011",
+      "reservation-012",
+      "reservation-013",
+      "reservation-014",
+      "reservation-015",
+      "reservation-016",
+      "reservation-017",
+      "reservation-018",
+      "reservation-019",
+      "reservation-020",
+      "reservation-021",
+      "reservation-022",
+      "reservation-023",
+      "reservation-024",
+      "reservation-025",
+      "reservation-026",
+      "reservation-027",
+      "reservation-028",
+      "reservation-029",
+      "reservation-030",
+      "reservation-031",
+      "reservation-032",
+      "reservation-033",
+      "reservation-034",
+      "reservation-035",
+      "reservation-036",
+      "reservation-037",
+      "reservation-038",
+      "reservation-039",
+      "reservation-040",
+      "reservation-041",
+      "reservation-042",
+      "reservation-043",
+      "reservation-044",
+      "reservation-045",
+      "reservation-046",
+      "reservation-047",
+      "reservation-048",
+      "reservation-049",
+      "reservation-050",
+      "reservation-051",
+      "reservation-052",
+      "reservation-053",
+      "reservation-054",
+      "reservation-055",
+      "reservation-056",
+      "reservation-057",
+      "reservation-058",
+      "reservation-059",
+      "reservation-060",
+      "reservation-061",
+      "reservation-062",
+      "reservation-063",
+      "reservation-064",
+      "reservation-065"
+    ],
+    "ledger": {
+      "reservations": [
+        {
+          "id": "reservation-001",
+          "status": "ISSUED",
+          "event_id": "event-001"
+        },
+        {
+          "id": "reservation-002",
+          "status": "ISSUED",
+          "event_id": "event-002"
+        },
+        {
+          "id": "reservation-003",
+          "status": "ISSUED",
+          "event_id": "event-003"
+        },
+        {
+          "id": "reservation-004",
+          "status": "ISSUED",
+          "event_id": "event-004"
+        },
+        {
+          "id": "reservation-005",
+          "status": "ISSUED",
+          "event_id": "event-005"
+        },
+        {
+          "id": "reservation-006",
+          "status": "ISSUED",
+          "event_id": "event-006"
+        },
+        {
+          "id": "reservation-007",
+          "status": "ISSUED",
+          "event_id": "event-007"
+        },
+        {
+          "id": "reservation-008",
+          "status": "ISSUED",
+          "event_id": "event-008"
+        },
+        {
+          "id": "reservation-009",
+          "status": "ISSUED",
+          "event_id": "event-009"
+        },
+        {
+          "id": "reservation-010",
+          "status": "ISSUED",
+          "event_id": "event-010"
+        },
+        {
+          "id": "reservation-011",
+          "status": "ISSUED",
+          "event_id": "event-011"
+        },
+        {
+          "id": "reservation-012",
+          "status": "ISSUED",
+          "event_id": "event-012"
+        },
+        {
+          "id": "reservation-013",
+          "status": "ISSUED",
+          "event_id": "event-013"
+        },
+        {
+          "id": "reservation-014",
+          "status": "ISSUED",
+          "event_id": "event-014"
+        },
+        {
+          "id": "reservation-015",
+          "status": "ISSUED",
+          "event_id": "event-015"
+        },
+        {
+          "id": "reservation-016",
+          "status": "ISSUED",
+          "event_id": "event-016"
+        },
+        {
+          "id": "reservation-017",
+          "status": "ISSUED",
+          "event_id": "event-017"
+        },
+        {
+          "id": "reservation-018",
+          "status": "ISSUED",
+          "event_id": "event-018"
+        },
+        {
+          "id": "reservation-019",
+          "status": "ISSUED",
+          "event_id": "event-019"
+        },
+        {
+          "id": "reservation-020",
+          "status": "ISSUED",
+          "event_id": "event-020"
+        },
+        {
+          "id": "reservation-021",
+          "status": "ISSUED",
+          "event_id": "event-021"
+        },
+        {
+          "id": "reservation-022",
+          "status": "ISSUED",
+          "event_id": "event-022"
+        },
+        {
+          "id": "reservation-023",
+          "status": "ISSUED",
+          "event_id": "event-023"
+        },
+        {
+          "id": "reservation-024",
+          "status": "ISSUED",
+          "event_id": "event-024"
+        },
+        {
+          "id": "reservation-025",
+          "status": "ISSUED",
+          "event_id": "event-025"
+        },
+        {
+          "id": "reservation-026",
+          "status": "ISSUED",
+          "event_id": "event-026"
+        },
+        {
+          "id": "reservation-027",
+          "status": "ISSUED",
+          "event_id": "event-027"
+        },
+        {
+          "id": "reservation-028",
+          "status": "ISSUED",
+          "event_id": "event-028"
+        },
+        {
+          "id": "reservation-029",
+          "status": "ISSUED",
+          "event_id": "event-029"
+        },
+        {
+          "id": "reservation-030",
+          "status": "ISSUED",
+          "event_id": "event-030"
+        },
+        {
+          "id": "reservation-031",
+          "status": "ISSUED",
+          "event_id": "event-031"
+        },
+        {
+          "id": "reservation-032",
+          "status": "ISSUED",
+          "event_id": "event-032"
+        },
+        {
+          "id": "reservation-033",
+          "status": "ISSUED",
+          "event_id": "event-033"
+        },
+        {
+          "id": "reservation-034",
+          "status": "ISSUED",
+          "event_id": "event-034"
+        },
+        {
+          "id": "reservation-035",
+          "status": "ISSUED",
+          "event_id": "event-035"
+        },
+        {
+          "id": "reservation-036",
+          "status": "ISSUED",
+          "event_id": "event-036"
+        },
+        {
+          "id": "reservation-037",
+          "status": "ISSUED",
+          "event_id": "event-037"
+        },
+        {
+          "id": "reservation-038",
+          "status": "ISSUED",
+          "event_id": "event-038"
+        },
+        {
+          "id": "reservation-039",
+          "status": "ISSUED",
+          "event_id": "event-039"
+        },
+        {
+          "id": "reservation-040",
+          "status": "ISSUED",
+          "event_id": "event-040"
+        },
+        {
+          "id": "reservation-041",
+          "status": "ISSUED",
+          "event_id": "event-041"
+        },
+        {
+          "id": "reservation-042",
+          "status": "ISSUED",
+          "event_id": "event-042"
+        },
+        {
+          "id": "reservation-043",
+          "status": "ISSUED",
+          "event_id": "event-043"
+        },
+        {
+          "id": "reservation-044",
+          "status": "ISSUED",
+          "event_id": "event-044"
+        },
+        {
+          "id": "reservation-045",
+          "status": "ISSUED",
+          "event_id": "event-045"
+        },
+        {
+          "id": "reservation-046",
+          "status": "ISSUED",
+          "event_id": "event-046"
+        },
+        {
+          "id": "reservation-047",
+          "status": "ISSUED",
+          "event_id": "event-047"
+        },
+        {
+          "id": "reservation-048",
+          "status": "ISSUED",
+          "event_id": "event-048"
+        },
+        {
+          "id": "reservation-049",
+          "status": "ISSUED",
+          "event_id": "event-049"
+        },
+        {
+          "id": "reservation-050",
+          "status": "ISSUED",
+          "event_id": "event-050"
+        },
+        {
+          "id": "reservation-051",
+          "status": "ISSUED",
+          "event_id": "event-051"
+        },
+        {
+          "id": "reservation-052",
+          "status": "ISSUED",
+          "event_id": "event-052"
+        },
+        {
+          "id": "reservation-053",
+          "status": "ISSUED",
+          "event_id": "event-053"
+        },
+        {
+          "id": "reservation-054",
+          "status": "ISSUED",
+          "event_id": "event-054"
+        },
+        {
+          "id": "reservation-055",
+          "status": "ISSUED",
+          "event_id": "event-055"
+        },
+        {
+          "id": "reservation-056",
+          "status": "ISSUED",
+          "event_id": "event-056"
+        },
+        {
+          "id": "reservation-057",
+          "status": "ISSUED",
+          "event_id": "event-057"
+        },
+        {
+          "id": "reservation-058",
+          "status": "ISSUED",
+          "event_id": "event-058"
+        },
+        {
+          "id": "reservation-059",
+          "status": "ISSUED",
+          "event_id": "event-059"
+        },
+        {
+          "id": "reservation-060",
+          "status": "ISSUED",
+          "event_id": "event-060"
+        },
+        {
+          "id": "reservation-061",
+          "status": "ISSUED",
+          "event_id": "event-061"
+        },
+        {
+          "id": "reservation-062",
+          "status": "ISSUED",
+          "event_id": "event-062"
+        },
+        {
+          "id": "reservation-063",
+          "status": "ISSUED",
+          "event_id": "event-063"
+        },
+        {
+          "id": "reservation-064",
+          "status": "ISSUED",
+          "event_id": "event-064"
+        },
+        {
+          "id": "reservation-065",
+          "status": "ISSUED",
+          "event_id": "event-065"
+        }
+      ],
+      "tickets": [
+        {
+          "id": "ticket-001",
+          "reservation_id": "reservation-001",
+          "source_event_id": "event-001"
+        },
+        {
+          "id": "ticket-002",
+          "reservation_id": "reservation-002",
+          "source_event_id": "event-002"
+        },
+        {
+          "id": "ticket-003",
+          "reservation_id": "reservation-003",
+          "source_event_id": "event-003"
+        },
+        {
+          "id": "ticket-004",
+          "reservation_id": "reservation-004",
+          "source_event_id": "event-004"
+        },
+        {
+          "id": "ticket-005",
+          "reservation_id": "reservation-005",
+          "source_event_id": "event-005"
+        },
+        {
+          "id": "ticket-006",
+          "reservation_id": "reservation-006",
+          "source_event_id": "event-006"
+        },
+        {
+          "id": "ticket-007",
+          "reservation_id": "reservation-007",
+          "source_event_id": "event-007"
+        },
+        {
+          "id": "ticket-008",
+          "reservation_id": "reservation-008",
+          "source_event_id": "event-008"
+        },
+        {
+          "id": "ticket-009",
+          "reservation_id": "reservation-009",
+          "source_event_id": "event-009"
+        },
+        {
+          "id": "ticket-010",
+          "reservation_id": "reservation-010",
+          "source_event_id": "event-010"
+        },
+        {
+          "id": "ticket-011",
+          "reservation_id": "reservation-011",
+          "source_event_id": "event-011"
+        },
+        {
+          "id": "ticket-012",
+          "reservation_id": "reservation-012",
+          "source_event_id": "event-012"
+        },
+        {
+          "id": "ticket-013",
+          "reservation_id": "reservation-013",
+          "source_event_id": "event-013"
+        },
+        {
+          "id": "ticket-014",
+          "reservation_id": "reservation-014",
+          "source_event_id": "event-014"
+        },
+        {
+          "id": "ticket-015",
+          "reservation_id": "reservation-015",
+          "source_event_id": "event-015"
+        },
+        {
+          "id": "ticket-016",
+          "reservation_id": "reservation-016",
+          "source_event_id": "event-016"
+        },
+        {
+          "id": "ticket-017",
+          "reservation_id": "reservation-017",
+          "source_event_id": "event-017"
+        },
+        {
+          "id": "ticket-018",
+          "reservation_id": "reservation-018",
+          "source_event_id": "event-018"
+        },
+        {
+          "id": "ticket-019",
+          "reservation_id": "reservation-019",
+          "source_event_id": "event-019"
+        },
+        {
+          "id": "ticket-020",
+          "reservation_id": "reservation-020",
+          "source_event_id": "event-020"
+        },
+        {
+          "id": "ticket-021",
+          "reservation_id": "reservation-021",
+          "source_event_id": "event-021"
+        },
+        {
+          "id": "ticket-022",
+          "reservation_id": "reservation-022",
+          "source_event_id": "event-022"
+        },
+        {
+          "id": "ticket-023",
+          "reservation_id": "reservation-023",
+          "source_event_id": "event-023"
+        },
+        {
+          "id": "ticket-024",
+          "reservation_id": "reservation-024",
+          "source_event_id": "event-024"
+        },
+        {
+          "id": "ticket-025",
+          "reservation_id": "reservation-025",
+          "source_event_id": "event-025"
+        },
+        {
+          "id": "ticket-026",
+          "reservation_id": "reservation-026",
+          "source_event_id": "event-026"
+        },
+        {
+          "id": "ticket-027",
+          "reservation_id": "reservation-027",
+          "source_event_id": "event-027"
+        },
+        {
+          "id": "ticket-028",
+          "reservation_id": "reservation-028",
+          "source_event_id": "event-028"
+        },
+        {
+          "id": "ticket-029",
+          "reservation_id": "reservation-029",
+          "source_event_id": "event-029"
+        },
+        {
+          "id": "ticket-030",
+          "reservation_id": "reservation-030",
+          "source_event_id": "event-030"
+        },
+        {
+          "id": "ticket-031",
+          "reservation_id": "reservation-031",
+          "source_event_id": "event-031"
+        },
+        {
+          "id": "ticket-032",
+          "reservation_id": "reservation-032",
+          "source_event_id": "event-032"
+        },
+        {
+          "id": "ticket-033",
+          "reservation_id": "reservation-033",
+          "source_event_id": "event-033"
+        },
+        {
+          "id": "ticket-034",
+          "reservation_id": "reservation-034",
+          "source_event_id": "event-034"
+        },
+        {
+          "id": "ticket-035",
+          "reservation_id": "reservation-035",
+          "source_event_id": "event-035"
+        },
+        {
+          "id": "ticket-036",
+          "reservation_id": "reservation-036",
+          "source_event_id": "event-036"
+        },
+        {
+          "id": "ticket-037",
+          "reservation_id": "reservation-037",
+          "source_event_id": "event-037"
+        },
+        {
+          "id": "ticket-038",
+          "reservation_id": "reservation-038",
+          "source_event_id": "event-038"
+        },
+        {
+          "id": "ticket-039",
+          "reservation_id": "reservation-039",
+          "source_event_id": "event-039"
+        },
+        {
+          "id": "ticket-040",
+          "reservation_id": "reservation-040",
+          "source_event_id": "event-040"
+        },
+        {
+          "id": "ticket-041",
+          "reservation_id": "reservation-041",
+          "source_event_id": "event-041"
+        },
+        {
+          "id": "ticket-042",
+          "reservation_id": "reservation-042",
+          "source_event_id": "event-042"
+        },
+        {
+          "id": "ticket-043",
+          "reservation_id": "reservation-043",
+          "source_event_id": "event-043"
+        },
+        {
+          "id": "ticket-044",
+          "reservation_id": "reservation-044",
+          "source_event_id": "event-044"
+        },
+        {
+          "id": "ticket-045",
+          "reservation_id": "reservation-045",
+          "source_event_id": "event-045"
+        },
+        {
+          "id": "ticket-046",
+          "reservation_id": "reservation-046",
+          "source_event_id": "event-046"
+        },
+        {
+          "id": "ticket-047",
+          "reservation_id": "reservation-047",
+          "source_event_id": "event-047"
+        },
+        {
+          "id": "ticket-048",
+          "reservation_id": "reservation-048",
+          "source_event_id": "event-048"
+        },
+        {
+          "id": "ticket-049",
+          "reservation_id": "reservation-049",
+          "source_event_id": "event-049"
+        },
+        {
+          "id": "ticket-050",
+          "reservation_id": "reservation-050",
+          "source_event_id": "event-050"
+        },
+        {
+          "id": "ticket-051",
+          "reservation_id": "reservation-051",
+          "source_event_id": "event-051"
+        },
+        {
+          "id": "ticket-052",
+          "reservation_id": "reservation-052",
+          "source_event_id": "event-052"
+        },
+        {
+          "id": "ticket-053",
+          "reservation_id": "reservation-053",
+          "source_event_id": "event-053"
+        },
+        {
+          "id": "ticket-054",
+          "reservation_id": "reservation-054",
+          "source_event_id": "event-054"
+        },
+        {
+          "id": "ticket-055",
+          "reservation_id": "reservation-055",
+          "source_event_id": "event-055"
+        },
+        {
+          "id": "ticket-056",
+          "reservation_id": "reservation-056",
+          "source_event_id": "event-056"
+        },
+        {
+          "id": "ticket-057",
+          "reservation_id": "reservation-057",
+          "source_event_id": "event-057"
+        },
+        {
+          "id": "ticket-058",
+          "reservation_id": "reservation-058",
+          "source_event_id": "event-058"
+        },
+        {
+          "id": "ticket-059",
+          "reservation_id": "reservation-059",
+          "source_event_id": "event-059"
+        },
+        {
+          "id": "ticket-060",
+          "reservation_id": "reservation-060",
+          "source_event_id": "event-060"
+        },
+        {
+          "id": "ticket-061",
+          "reservation_id": "reservation-061",
+          "source_event_id": "event-061"
+        },
+        {
+          "id": "ticket-062",
+          "reservation_id": "reservation-062",
+          "source_event_id": "event-062"
+        },
+        {
+          "id": "ticket-063",
+          "reservation_id": "reservation-063",
+          "source_event_id": "event-063"
+        },
+        {
+          "id": "ticket-064",
+          "reservation_id": "reservation-064",
+          "source_event_id": "event-064"
+        },
+        {
+          "id": "ticket-065",
+          "reservation_id": "reservation-065",
+          "source_event_id": "event-065"
+        }
+      ]
+    },
+    "result": {
+      "passed": true,
+      "accepted": 65,
+      "reservations": 65,
+      "tickets": 65,
+      "duplicate_accepted_ids": [],
+      "missing_reservations": [],
+      "unexpected_reservations": [],
+      "duplicate_reservations": [],
+      "not_issued": [],
+      "missing_tickets": [],
+      "duplicate_tickets": [],
+      "duplicate_ticket_ids": [],
+      "unexpected_tickets": [],
+      "unmatched_source_events": []
+    }
+  }
+}

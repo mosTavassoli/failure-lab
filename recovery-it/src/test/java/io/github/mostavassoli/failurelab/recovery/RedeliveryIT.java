@@ -13,14 +13,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -36,8 +41,12 @@ class RedeliveryIT {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String TOPIC = "reservation.accepted.v1";
     private static final String GROUP = "failure-lab-fulfillment";
+    private static final String KAFKA_GROUP = "Kafka consumer group";
+    private static final String WORKER_LOG = "Fulfillment worker log";
+    private static final String HTTP_STATUS = "Reservation API status";
     private static final TopicPartition PARTITION = new TopicPartition(TOPIC, 0);
     private static final Pattern HTTP_PORT = Pattern.compile("Listening on: http://127\\.0\\.0\\.1:(\\d+)");
+    private final List<Map<String, Object>> timeline = new ArrayList<>();
 
     @TempDir
     Path temp;
@@ -61,6 +70,8 @@ class RedeliveryIT {
                     URI base = api.awaitHttp();
                     UUID sale = seedSale(db);
                     UUID first = reserve(http, base, sale);
+                    record("first_accepted", "The API accepted the first reservation.",
+                            List.of("Reservation API (HTTP 201)"), Map.of("reservation_id", first));
                     var firstDelivery = readFirstDelivery(kafka.getBootstrapServers());
                     assertEquals(first.toString(), firstDelivery.key());
                     var event = JSON.readTree(firstDelivery.value());
@@ -70,6 +81,10 @@ class RedeliveryIT {
                     assertEquals(TOPIC, event.path("type").asText());
                     await("relay marks the broker-acknowledged outbox row", api,
                             () -> published(db, eventId));
+                    record("event_published", "The relay published the first acceptance event.",
+                            List.of("Kafka record", "PostgreSQL outbox"),
+                            Map.of("reservation_id", first, "event_id", eventId,
+                                    "partition", firstDelivery.partition(), "event_offset", firstDelivery.offset()));
 
                     Ticket committedBeforeCrash;
                     try (var crashing = start("fulfillment-worker", "worker-before-crash", environment, Map.of(
@@ -79,33 +94,99 @@ class RedeliveryIT {
                         assertNotNull(committedBeforeCrash, "ticket must already be durable");
                         assertEquals(eventId, committedBeforeCrash.eventId());
                         assertEquals("ISSUED", status(http, base, first));
-                        assertUncommitted(admin, firstDelivery.offset());
+                        var facts = offsetFacts(firstDelivery.offset(), uncommittedOffset(admin, firstDelivery.offset()));
+                        facts.put("reservation_id", first);
+                        facts.put("ticket_id", committedBeforeCrash.id());
+                        facts.put("status", "ISSUED");
+                        record("ack_held", "The ticket was durable and visible as ISSUED, but acknowledgement was held.",
+                                List.of(WORKER_LOG, "PostgreSQL", HTTP_STATUS, KAFKA_GROUP), facts);
                         crashing.kill();
-                        assertUncommitted(admin, firstDelivery.offset());
+                        Long afterCrash = uncommittedOffset(admin, firstDelivery.offset());
+                        record("worker_crashed", "The drill killed the worker; the offset still had not advanced.",
+                                List.of("Lab process harness", KAFKA_GROUP),
+                                offsetFacts(firstDelivery.offset(), afterCrash));
                     }
 
                     UUID second = reserve(http, base, sale);
                     assertEquals("PENDING", status(http, base, second));
+                    record("second_pending", "The API accepted a second reservation; it was PENDING without a worker.",
+                            List.of("Reservation API (HTTP 201)", HTTP_STATUS),
+                            Map.of("reservation_id", second, "status", "PENDING"));
                     try (var restarted = start("fulfillment-worker", "worker-after-crash", environment, Map.of())) {
                         restarted.awaitLog("Ticket already issued for reservation " + first + " (event " + eventId + ")");
+                        Ticket afterRedelivery = ticket(db, first);
+                        assertEquals(committedBeforeCrash, afterRedelivery);
+                        record("redelivered", "The restarted worker saw the same event and kept the original ticket.",
+                                List.of(WORKER_LOG, "PostgreSQL"),
+                                Map.of("reservation_id", first, "event_id", eventId, "ticket_id", afterRedelivery.id()));
                         restarted.awaitLog("Ticket issued for reservation " + second);
+                        long nextOffset = firstDelivery.offset() + 2;
                         await("worker commits offsets for both reservations", restarted, () -> {
                             var offset = committedOffset(admin);
-                            return offset != null && offset.offset() == firstDelivery.offset() + 2;
+                            return offset != null && offset.offset() == nextOffset;
                         });
-                        assertEquals(committedBeforeCrash, ticket(db, first));
+                        record("offsets_committed", "Kafka recorded consumer progress past both events.",
+                                List.of(KAFKA_GROUP), Map.of("next_offset", nextOffset));
                         assertEquals("ISSUED", status(http, base, second));
-                        assertReconciled(db, sale, Set.of(first, second));
+                        record("second_issued", "The API confirmed that the restarted worker issued the second reservation.",
+                                List.of(WORKER_LOG, HTTP_STATUS), Map.of("reservation_id", second, "status", "ISSUED"));
+                        var accepted = List.of(first.toString(), second.toString());
+                        var ledger = ledger(db);
+                        var result = TicketVerification.verify(accepted, ledger);
+                        boolean passed = Boolean.TRUE.equals(result.get("passed"));
+                        if (passed) {
+                            for (var row : ledger.get("tickets")) {
+                                if (first.toString().equals(row.get("reservation_id").asText())) {
+                                    assertEquals(committedBeforeCrash.id().toString(), row.get("id").asText(),
+                                            "final ledger must retain the original ticket");
+                                }
+                            }
+                        }
+                        record("tickets_reconciled", "Checked accepted reservation IDs against the PostgreSQL ledger.",
+                                List.of("Reservation API", "PostgreSQL"),
+                                Map.of("accepted", result.get("accepted"), "tickets", result.get("tickets"), "passed", passed));
+                        writeReport(accepted, ledger, result);
+                        assertTrue(passed, () -> "Ticket reconciliation: " + result);
                     }
                 }
             }
         }
     }
 
-    private static void assertUncommitted(Admin admin, long eventOffset) throws Exception {
+    private static Long uncommittedOffset(Admin admin, long eventOffset) throws Exception {
         var committed = committedOffset(admin);
         assertTrue(committed == null || committed.offset() <= eventOffset,
                 "consumer offset must not have advanced past the held event");
+        return committed == null ? null : committed.offset();
+    }
+
+    private static Map<String, Object> offsetFacts(long eventOffset, Long committed) {
+        var facts = new LinkedHashMap<String, Object>();
+        facts.put("event_offset", eventOffset);
+        facts.put("committed_next_offset", committed);
+        return facts;
+    }
+
+    private void record(String stage, String summary, List<String> sources, Map<String, ?> facts) {
+        timeline.add(Map.of("stage", stage, "observed_at", Instant.now().truncatedTo(ChronoUnit.MILLIS).toString(),
+                "summary", summary, "sources", sources, "facts", facts));
+    }
+
+    private void writeReport(List<String> accepted, JsonNode ledger, Map<String, Object> result) throws Exception {
+        var report = Map.of(
+                "format", "failure-lab/incident-report-v1",
+                "scenario", "worker-redelivery",
+                "title", "Worker crash after commit, before acknowledgement",
+                "target", "fulfillment-worker",
+                "runbook", "knowledge/worker-redelivery.md",
+                "timeline", timeline,
+                "diagnosis", Map.of("summary", "The worker committed the ticket before it could acknowledge the event.",
+                        "evidence_stages", List.of("ack_held", "worker_crashed", "redelivered")),
+                "verification", Map.of("accepted_ids", accepted, "ledger", ledger, "result", result));
+        Path output = Path.of(System.getProperty("failurelab.reportDir"), "incident-report.json");
+        String json = JSON.writerWithDefaultPrettyPrinter().with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+                .writeValueAsString(report);
+        Files.writeString(output, json + "\n");
     }
 
     private static OffsetAndMetadata committedOffset(Admin admin) throws Exception {
@@ -178,24 +259,14 @@ class RedeliveryIT {
         }
     }
 
-    private static void assertReconciled(PostgreSQLContainer db, UUID sale, Set<UUID> accepted) throws Exception {
-        var actual = new java.util.HashSet<UUID>();
-        try (var connection = connect(db);
-             var query = connection.prepareStatement("""
-                     SELECT r.id, r.status, t.id AS ticket_id FROM reservation r
-                     LEFT JOIN ticket t ON t.reservation_id = r.id WHERE r.sale_id = ?
-                     """)) {
-            query.setObject(1, sale);
+    private static JsonNode ledger(PostgreSQLContainer db) throws Exception {
+        var sql = Files.readString(Path.of(System.getProperty("failurelab.root"), "lab", "ticket-ledger.sql"));
+        try (var connection = connect(db); var query = connection.prepareStatement(sql)) {
             try (var rows = query.executeQuery()) {
-                while (rows.next()) {
-                    UUID id = rows.getObject("id", UUID.class);
-                    assertTrue(actual.add(id), "duplicate ticket for " + id);
-                    assertEquals("ISSUED", rows.getString("status"));
-                    assertNotNull(rows.getObject("ticket_id"), "missing ticket for " + id);
-                }
+                assertTrue(rows.next(), "the ledger query must return one snapshot");
+                return JSON.readTree(rows.getString(1));
             }
         }
-        assertEquals(accepted, actual);
     }
 
     private static java.sql.Connection connect(PostgreSQLContainer db) throws Exception {

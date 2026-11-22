@@ -31,5 +31,7 @@ PostgreSQL ledger read: exactly one `ISSUED` reservation and one ticket
 backed by its acceptance event per accepted ID, with no extra tickets.
 Lag is transport evidence, not business verification.
 
-The [reproduction guide](../lab/kind/README.md) explains how to run the
-drill and replay the snapshot with Kafka On-Call.
+See the [recorded incident report](../lab/reports/recorded/kind-cpu-scheduling.report.json)
+for both the scheduling evidence and the ticket verdict. The
+[reproduction guide](../lab/kind/README.md) explains how to run the drill and
+replay its separate diagnostic snapshot with Kafka On-Call.

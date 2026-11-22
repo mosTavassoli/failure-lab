@@ -7,6 +7,9 @@ from evidence import (
     confirms_cpu_block, kafka_lag, observed_pods, scaling_observations, scheduler_message_for_replay,
     verify_tickets, whole_units,
 )
+from incident_report import cpu_incident_report
+
+RECORDED_SNAPSHOT = Path(__file__).with_name("recorded") / "cpu-scheduling.snapshot.json"
 
 
 class KafkaLagTest(unittest.TestCase):
@@ -34,10 +37,38 @@ class KafkaLagTest(unittest.TestCase):
 
 class SchedulingEvidenceTest(unittest.TestCase):
     def test_recorded_snapshot_preserves_the_live_cpu_block(self):
-        path = Path(__file__).with_name("recorded") / "cpu-scheduling.snapshot.json"
-        snapshot = json.loads(path.read_text(encoding="utf-8"))
+        snapshot = json.loads(RECORDED_SNAPSHOT.read_text(encoding="utf-8"))
         self.assertEqual("kafka-oncall/snapshot-v1", snapshot["format"])
         self.assertTrue(confirms_cpu_block(snapshot["observations"]))
+
+    def test_incident_report_uses_matching_capture_and_the_ledger_verdict(self):
+        snapshot = json.loads(RECORDED_SNAPSHOT.read_text(encoding="utf-8"))
+        observations = snapshot["observations"]
+        blocked = {
+            "stage": "cpu_blocked", "observed_at": snapshot["as_of"],
+            "hpa_desired": observations["hpa"]["desired_replicas"],
+            "ready": observations["deployment"]["ready_replicas"],
+            "lag": observations["kafka"]["lag"], "external_metric": observations["external_metric"]["value"],
+            "scheduler_messages": {pod["name"]: pod["message"] for pod in observations["pods"]["items"]
+                                   if pod["scheduled"] is False},
+        }
+        # Synthetic failed ledger with a real scheduling snapshot: zero lag isn't a verdict.
+        run = {
+            "format": "failure-lab/kind-cpu-run-v1", "scenario": snapshot["id"], "target": snapshot["target"],
+            "timeline": [
+                blocked, {"stage": "lag_drained", "observed_at": snapshot["as_of"], "lag": 0},
+                {"stage": "tickets_reconciled", "observed_at": snapshot["as_of"], "passed": True},
+            ],
+            "accepted_ids": ["a"],
+            "ledger": {"reservations": [{"id": "a", "status": "ISSUED", "event_id": "event-a"}], "tickets": []},
+        }
+        report = cpu_incident_report(run, snapshot)
+        self.assertEqual(3, len(report["timeline"][0]["facts"]["blocked_pods"]))
+        self.assertFalse(report["timeline"][-1]["facts"]["passed"])
+        self.assertEqual(["a"], report["verification"]["result"]["missing_tickets"])
+        blocked["lag"] += 1
+        with self.assertRaisesRegex(ValueError, "does not match the CPU block"):
+            cpu_incident_report(run, snapshot)
 
     def test_normalizes_keda_and_hpa_only_when_the_scope_matches(self):
         target = {"kind": "Deployment", "name": WORKER}

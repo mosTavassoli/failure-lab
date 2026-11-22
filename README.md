@@ -39,9 +39,14 @@ tickets. The [Kubernetes/KEDA drill](lab/kind/README.md) is a separate
 scenario for CPU scheduling. In the [recorded local run](lab/kind/README.md#verified-local-run),
 the HPA requested four workers but only one was ready. After restoring CPU
 headroom, lag drained and all 65 accepted reservations reconciled by ticket
-ID. Kafka On-Call replayed the captured evidence offline. See the
-[design and roadmap](docs/design.md) for the `v1.0` scope and endpoint.
-The shared incident report and offline replay are not implemented yet.
+ID. Kafka On-Call replayed the captured evidence offline.
+
+Both drills now emit the [same incident report format](lab/reports/README.md).
+Read the captured [worker redelivery](lab/reports/recorded/worker-redelivery.report.json)
+or [CPU scheduling](lab/reports/recorded/kind-cpu-scheduling.report.json) report
+to see the timeline, diagnosis evidence, and ticket-by-ticket verification.
+The reports work offline; the browser replay is the next step in the
+[`v1.0` roadmap](docs/design.md#v10-scope).
 
 ## Run locally
 
@@ -52,9 +57,11 @@ Run the backend integration suite from the repo root:
 mvn verify
 ```
 
-The tests create disposable PostgreSQL and Kafka containers and do not
-need the Docker Compose stack or an API key. The drill's evidence tests
-run without Docker: `python -B -m unittest discover -s lab/kind -v`.
+The tests create disposable PostgreSQL and Kafka containers and do not need
+the Docker Compose stack or an API key. The crash test saves
+`recovery-it/target/incident-report.json`. The kind evidence tests run without
+Docker: `python -B -m unittest discover -s lab/kind -v`. See the
+[report checks](lab/reports/README.md#verify-offline) for both replay samples.
 
 To try the app manually:
 

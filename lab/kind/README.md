@@ -47,6 +47,9 @@ kind delete cluster --name failure-lab-cpu-RUN_SUFFIX --kubeconfig ./cleanup-lab
   deterministic verification result. The drill fails if any accepted
   reservation doesn't have exactly one matching ticket or if unexpected
   tickets exist, even if consumer lag is zero.
+- `incident-report.json`: the [shared replay format](../reports/README.md),
+  with a sourced timeline, the blocked pod conditions, and the independently
+  checkable ticket verdict. This does not replace either output above.
 
 Recompute ticket verification from the captured ledger without starting a
 cluster:
@@ -90,6 +93,7 @@ against the live ticket workload:
 | Recovered | All 4 workers became ready and lag fell to zero. PostgreSQL had exactly one matching ticket for each of 65 accepted reservation IDs, with none missing, duplicated, or unexpected. |
 | Offline replay | Kafka On-Call returned `cpu_scheduling`, citing the ScaledObject, HPA, Deployment, and pod observations. |
 
-Only the normalized scheduling snapshot is checked in. Generated run
-directories, including the full ticket ledger, are git-ignored. The cluster
-was deleted after the run.
+The normalized scheduling snapshot and an [aliased replay report](../reports/recorded/kind-cpu-scheduling.report.json)
+from the same run are checked in. Generated run directories, including the
+ledger with original synthetic IDs, are git-ignored. The cluster was deleted
+after the run.

@@ -126,6 +126,10 @@ the idle pod and observing lag drain, the drill compares accepted IDs
 with the PostgreSQL ledger. Neither a healthy replica count nor an offline
 diagnosis is proof that the tickets were issued.
 
+Both drills emit the [shared incident report](../lab/reports/README.md). The
+browser replay will read the recorded reports, not the live services. The
+Kafka On-Call snapshot remains a separate diagnosis artifact.
+
 ## Knowledge boundaries
 
 Markdown under [`knowledge/`](../knowledge/) is the first source for the

@@ -12,5 +12,11 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
       - run: mvn --batch-mode --no-transfer-progress verify
       - run: python3 -B -m unittest discover -s lab/kind -v
+      - run: python3 -m pip install -r lab/reports/requirements-test.txt
+      - run: python3 -B -m unittest discover -s lab/reports -v
+      - run: python3 -B -m lab.reports.report recovery-it/target/incident-report.json
