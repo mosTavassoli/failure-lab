@@ -13,13 +13,47 @@ that every future incident be about ticketing.
 | **1. Reservation API** | Real PostgreSQL tests show last-ticket contention, idempotent retry, and rollback if the acceptance event cannot be saved. |
 | **2. Fulfillment and redelivery** | The [redelivery drill](../knowledge/worker-redelivery.md) launches packaged apps against real Kafka and PostgreSQL. It stops the worker after commit and before acknowledgement, then checks redelivery, the original ticket ID, and reconciliation for both accepted orders. |
 | **3. Kubernetes/KEDA incident** | The [kind drill](../lab/kind/README.md) checks a healthy baseline, captures a CPU scheduling block against the same workload, tests recovery by ticket ID, and emits a snapshot for [Kafka On-Call](https://github.com/mosTavassoli/kafka-oncall). |
-| **4. Web and Knowledge** | Ship the React/TypeScript customer, incident, and Knowledge views. Both incidents must use the same evidence timeline and verification report. Record a public replay with no model or live cluster dependency. |
-| **5. Operate and extend** | Add OpenTelemetry and Prometheus where the incidents need them, test Redis as a non-authoritative status cache, and plug in the read-only HolmesGPT skill and versioned runbooks. Add a PostgreSQL lock incident without replacing the report format. |
+| **4. Shared report and offline replay (v1.0)** | Both drills emit the same versioned incident report, and a static site replays both incidents from committed reports. See [v1.0 scope](#v10-scope). |
 
-These are milestones, not separate platforms. Start the UI once the worker
-can produce a real timeline. Add no infrastructure just to put it in the
-stack list. Kafka On-Call, Streamjack, and Infra Agent Conformance remain
-independent.
+Milestone 4 is the last planned milestone. When it is done, Failure Lab is
+complete at `v1.0`. Kafka On-Call, Streamjack, and Infra Agent Conformance
+remain independent.
+
+## v1.0 scope
+
+Target: about 20 December 2026. If the date slips, cut scope rather than
+extend it.
+
+1. **One incident report format.** The redelivery and KEDA CPU drills write
+   the same versioned JSON report with three parts: a sourced timeline, the
+   diagnosis evidence, and the deterministic verification result (accepted
+   reservation IDs compared with issued tickets: missing, duplicate,
+   unexpected). Commit one sanitized report from each drill. A schema test
+   validates both, and the negative control with a missing and a duplicated
+   ticket must fail verification.
+2. **Offline replay.** A static React/TypeScript site reads only the committed
+   reports. It lists the incidents and shows each timeline, verification
+   result, and matching runbook from [`knowledge/`](../knowledge/). It shows
+   what customers saw from recorded data, such as accepted reservation IDs
+   and which ones received tickets. No backend, cluster, model, or API key;
+   hosted as static pages.
+3. **Wrap-up.** A README section on what the lab proves and what it does not,
+   a short demo recording, and a `v1.0` tag.
+
+## Out of scope
+
+- An interactive customer screen that calls the live API
+- Redis, OpenTelemetry, and Prometheus
+- A third incident, such as PostgreSQL lock contention
+- Live AI agent or HolmesGPT integration
+- Authentication or a hosted backend
+
+## After v1.0
+
+Add something only if all three are true: a specific interview, application,
+or research proposal needs it; it takes about a week or less; and it uses the
+existing report format. Otherwise record it as an idea and leave it.
+Maintenance means keeping CI green and fixing bugs.
 
 ## Current transaction boundary
 

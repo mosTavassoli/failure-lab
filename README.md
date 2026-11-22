@@ -40,8 +40,8 @@ scenario for CPU scheduling. In the [recorded local run](lab/kind/README.md#veri
 the HPA requested four workers but only one was ready. After restoring CPU
 headroom, lag drained and all 65 accepted reservations reconciled by ticket
 ID. Kafka On-Call replayed the captured evidence offline. See the
-[design and roadmap](docs/design.md) for what comes next. The web UI and
-agent are not implemented yet.
+[design and roadmap](docs/design.md) for the `v1.0` scope and endpoint.
+The shared incident report and offline replay are not implemented yet.
 
 ## Run locally
 
